@@ -21,6 +21,7 @@ export default function AdminPage() {
   const [mlmData, setMlmData] = useState<MLMData>(emptyMLMData);
   const [dataVersion, setDataVersion] = useState(0); // Force re-render when data changes
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true); // Track if this is the first load
   const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
 
@@ -34,10 +35,14 @@ export default function AdminPage() {
   }, [user, authLoading, router]);
 
   // Fetch data from Supabase on mount and after changes
-  const fetchData = async () => {
+  const fetchData = async (isInitial = false) => {
     if (!user) return;
     
-    setLoading(true);
+    // Only show full-page loading on initial load
+    if (isInitial) {
+      setLoading(true);
+    }
+    
     try {
       // First, ensure user has "ME" member initialized
       await fetch('/api/initialize-user', { method: 'POST' });
@@ -62,15 +67,24 @@ export default function AdminPage() {
       // Keep empty structure on error, but mark as loaded
       setMlmData(emptyMLMData);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+        setInitialLoad(false);
+      }
     }
   };
 
   useEffect(() => {
     if (user) {
-      fetchData();
+      // Only show loading screen on initial load
+      if (initialLoad) {
+        fetchData(true);
+      } else {
+        // Subsequent refreshes happen in background without loading screen
+        fetchData(false);
+      }
     }
-  }, [dataVersion, user, router]);
+  }, [dataVersion, user, router, initialLoad]);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<1 | 2 | 3>(1);
   const [newMemberName, setNewMemberName] = useState("");
@@ -291,8 +305,8 @@ export default function AdminPage() {
     }
   };
 
-  // Check if data is still loading
-  const isDataLoading = loading || mlmData.me.name === "Loading...";
+  // Check if data is still loading - only show full-page loading on initial load
+  const isDataLoading = (loading && initialLoad) || mlmData.me.name === "Loading...";
 
   if (authLoading || isDataLoading) {
     return (
