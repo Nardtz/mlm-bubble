@@ -8,6 +8,7 @@ export interface DownlineMember {
 
 export interface MLMData {
   me: {
+    id?: string; // ME member ID (e.g., "me-{userId}")
     name: string;
     startingCapital: number;
   };

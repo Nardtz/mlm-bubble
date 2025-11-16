@@ -1,13 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MLMData } from "@/types/mlm";
 import { dummyMLMData } from "@/data/dummy-data";
 import BubbleVisualization from "@/components/bubble-visualization";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
 
 export default function AdminPage() {
   const [mlmData, setMlmData] = useState<MLMData>(dummyMLMData);
   const [dataVersion, setDataVersion] = useState(0); // Force re-render when data changes
+  const [loading, setLoading] = useState(true);
+  const { user, loading: authLoading, signOut } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+    }
+  }, [user, authLoading, router]);
+
+  // Fetch data from Supabase on mount and after changes
+  const fetchData = async () => {
+    if (!user) return;
+    
+    try {
+      // First, ensure user has "ME" member initialized
+      await fetch('/api/initialize-user', { method: 'POST' });
+      
+      // Then fetch MLM data
+      const response = await fetch('/api/mlm-data');
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setMlmData(result.data);
+      } else {
+        console.error('Failed to fetch data:', result.error);
+        if (result.error?.includes('Unauthorized')) {
+          router.push('/login');
+          return;
+        }
+        // Fall back to dummy data
+        setMlmData(dummyMLMData);
+      }
+    } catch (err: any) {
+      console.error('Error fetching MLM data:', err);
+      // Fall back to dummy data
+      setMlmData(dummyMLMData);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [dataVersion, user, router]);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<1 | 2 | 3>(1);
   const [newMemberName, setNewMemberName] = useState("");
@@ -31,7 +83,7 @@ export default function AdminPage() {
   };
 
   // Add new downline
-  const handleAddDownline = () => {
+  const handleAddDownline = async () => {
     if (!newMemberName.trim() || !newMemberCapital.trim()) {
       alert("Please fill in both name and starting capital");
       return;
@@ -43,27 +95,41 @@ export default function AdminPage() {
       return;
     }
 
-    const newMember = {
-      id: generateId("new", selectedLevel),
-      name: newMemberName.trim(),
-      startingCapital: capital,
-      level: selectedLevel,
-    };
+    const newMemberId = generateId("new", selectedLevel);
+    let parentId: string | null = null;
 
     if (selectedLevel === 1) {
       if (mlmData.firstLevel.length >= 7) {
         alert("Maximum 7 first level downlines allowed");
         return;
       }
-      const updatedSecondLevel = {
-        ...mlmData.secondLevel,
-        [newMember.id]: [],
-      };
-      updateMlmData((prevData) => ({
-        ...prevData,
-        firstLevel: [...prevData.firstLevel, newMember],
-        secondLevel: updatedSecondLevel,
-      }));
+      // Get the actual ME member ID (e.g., "me-{userId}")
+      // If not found, try to initialize it first
+      if (!mlmData.me.id) {
+        try {
+          const initResponse = await fetch('/api/initialize-user', { method: 'POST' });
+          const initResult = await initResponse.json();
+          if (initResult.success && initResult.data) {
+            parentId = initResult.data.id;
+            // Refresh the data to get the updated ME member
+            setDataVersion((v) => v + 1);
+          } else {
+            alert(`Error: Could not initialize ME member. ${initResult.error || 'Please refresh the page.'}`);
+            return;
+          }
+        } catch (err: any) {
+          console.error('Error initializing ME member:', err);
+          alert(`Error: ME member not found. ${err.message || 'Please refresh the page.'}`);
+          return;
+        }
+      } else {
+        parentId = mlmData.me.id;
+      }
+      
+      if (!parentId) {
+        alert("Error: ME member ID is missing. Please refresh the page.");
+        return;
+      }
     } else if (selectedLevel === 2) {
       if (!selectedMemberId) {
         alert("Please select a first level member to add a downline to");
@@ -74,20 +140,7 @@ export default function AdminPage() {
         alert("Maximum 7 second level downlines per parent allowed");
         return;
       }
-      // Create new objects to ensure React detects the change
-      const updatedSecondLevel = {
-        ...mlmData.secondLevel,
-        [selectedMemberId]: [...parentSecondLevel, newMember],
-      };
-      const updatedThirdLevel = {
-        ...mlmData.thirdLevel,
-        [newMember.id]: [],
-      };
-      updateMlmData((prevData) => ({
-        ...prevData,
-        secondLevel: updatedSecondLevel,
-        thirdLevel: updatedThirdLevel,
-      }));
+      parentId = selectedMemberId; // Second level members have first level member as parent
     } else if (selectedLevel === 3) {
       if (!selectedMemberId) {
         alert("Please select a second level member to add a downline to");
@@ -98,209 +151,110 @@ export default function AdminPage() {
         alert("Maximum 7 third level downlines per parent allowed");
         return;
       }
-      // Create a new thirdLevel object to ensure React detects the change
-      const updatedThirdLevel = {
-        ...mlmData.thirdLevel,
-        [selectedMemberId]: [...parentThirdLevel, newMember],
-      };
-      setMlmData((prevData) => ({
-        ...prevData,
-        thirdLevel: updatedThirdLevel,
-      }));
+      parentId = selectedMemberId; // Third level members have second level member as parent
     }
 
-    // Reset form
-    setNewMemberName("");
-    setNewMemberCapital("");
-    setShowAddForm(false);
-    setSelectedMemberId(null);
+    if (!parentId) {
+      alert("Invalid parent selection");
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newMemberId,
+          name: newMemberName.trim(),
+          startingCapital: capital,
+          level: selectedLevel,
+          parentId: parentId,
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        // Reset form
+        setNewMemberName("");
+        setNewMemberCapital("");
+        setShowAddForm(false);
+        setSelectedMemberId(null);
+        // Refresh data from Supabase
+        setDataVersion((v) => v + 1);
+      } else {
+        alert(`Failed to add member: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Error adding member:', error);
+      alert(`Error adding member: ${error.message}`);
+    }
   };
 
   // Delete downline
-  const handleDeleteDownline = (id: string, level: number) => {
+  const handleDeleteDownline = async (id: string, level: number) => {
     if (!confirm("Are you sure you want to delete this downline and all its sub-downlines?")) {
       return;
     }
 
-    if (level === 1) {
-      // Delete from first level and remove all its children
-      const updatedFirstLevel = mlmData.firstLevel.filter((m) => m.id !== id);
-      const { [id]: removed, ...restSecondLevel } = mlmData.secondLevel;
-      
-      // Remove all third level entries for deleted second level members
-      const updatedThirdLevel = { ...mlmData.thirdLevel };
-      if (removed) {
-        removed.forEach((secondLevelMember) => {
-          delete updatedThirdLevel[secondLevelMember.id];
-        });
-      }
+    try {
+      const response = await fetch(`/api/members?id=${id}`, {
+        method: 'DELETE',
+      });
 
-      updateMlmData((prevData) => ({
-        ...prevData,
-        firstLevel: prevData.firstLevel.filter((m) => m.id !== id),
-        secondLevel: (() => {
-          const { [id]: removed, ...rest } = prevData.secondLevel;
-          return rest;
-        })(),
-        thirdLevel: (() => {
-          const updated = { ...prevData.thirdLevel };
-          const removed = prevData.secondLevel[id];
-          if (removed) {
-            removed.forEach((secondLevelMember) => {
-              delete updated[secondLevelMember.id];
-            });
-          }
-          return updated;
-        })(),
-      }));
-    } else if (level === 2) {
-      // Delete from second level and remove all its children
-      updateMlmData((prevData) => {
-        const parentId = Object.keys(prevData.secondLevel).find((key) =>
-          prevData.secondLevel[key].some((m) => m.id === id)
-        );
-        if (!parentId) return prevData;
-        
-        const updatedSecondLevel = {
-          ...prevData.secondLevel,
-          [parentId]: prevData.secondLevel[parentId].filter((m) => m.id !== id),
-        };
-        
-        const { [id]: removed, ...restThirdLevel } = prevData.thirdLevel;
-        
-        return {
-          ...prevData,
-          secondLevel: updatedSecondLevel,
-          thirdLevel: restThirdLevel,
-        };
-      });
-    } else if (level === 3) {
-      // Delete from third level
-      updateMlmData((prevData) => {
-        const parentId = Object.keys(prevData.thirdLevel).find((key) =>
-          prevData.thirdLevel[key].some((m) => m.id === id)
-        );
-        if (!parentId) return prevData;
-        
-        const updatedThirdLevel = {
-          ...prevData.thirdLevel,
-          [parentId]: prevData.thirdLevel[parentId].filter((m) => m.id !== id),
-        };
-        
-        return {
-          ...prevData,
-          thirdLevel: updatedThirdLevel,
-        };
-      });
+      const result = await response.json();
+      if (result.success) {
+        // Refresh data from Supabase (cascade delete will handle children)
+        setDataVersion((v) => v + 1);
+      } else {
+        alert(`Failed to delete member: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Error deleting member:', error);
+      alert(`Error deleting member: ${error.message}`);
     }
   };
 
   // Reassign downline to different parent
-  const handleReassign = (memberId: string, currentLevel: number, newParentId: string) => {
-    updateMlmData((prevData) => {
-      if (currentLevel === 2) {
-        // Find current parent
-        const currentParentId = Object.keys(prevData.secondLevel).find((key) =>
-          prevData.secondLevel[key]?.some((m) => m.id === memberId)
-        );
-        
-        if (!currentParentId) {
-          console.error("Could not find current parent for member:", memberId);
-          return prevData;
-        }
-        
-        const member = prevData.secondLevel[currentParentId]?.find((m) => m.id === memberId);
-        if (!member) {
-          console.error("Could not find member:", memberId);
-          return prevData;
-        }
-        
-        // Check if new parent has space
-        const newParentChildren = prevData.secondLevel[newParentId] || [];
-        if (newParentChildren.length >= 7) {
-          alert("The selected parent already has 7 downlines");
-          return prevData;
-        }
-        
-        // Create a completely new secondLevel object to ensure React detects the change
-        const updatedSecondLevel: Record<string, typeof prevData.secondLevel[string]> = {};
-        
-        // Copy all existing entries
-        Object.keys(prevData.secondLevel).forEach((key) => {
-          if (key === currentParentId) {
-            // Remove member from old parent
-            updatedSecondLevel[key] = prevData.secondLevel[key].filter((m) => m.id !== memberId);
-          } else if (key === newParentId) {
-            // Add member to new parent
-            updatedSecondLevel[key] = [...prevData.secondLevel[key], member];
-          } else {
-            // Keep other entries as is
-            updatedSecondLevel[key] = [...prevData.secondLevel[key]];
-          }
-        });
-        
-        // If new parent doesn't exist yet, create it
-        if (!prevData.secondLevel[newParentId]) {
-          updatedSecondLevel[newParentId] = [member];
-        }
-        
-        return {
-          ...prevData,
-          secondLevel: updatedSecondLevel,
-        };
-      } else if (currentLevel === 3) {
-        // Find current parent
-        const currentParentId = Object.keys(prevData.thirdLevel).find((key) =>
-          prevData.thirdLevel[key]?.some((m) => m.id === memberId)
-        );
-        
-        if (!currentParentId) {
-          console.error("Could not find current parent for member:", memberId);
-          return prevData;
-        }
-        
-        const member = prevData.thirdLevel[currentParentId]?.find((m) => m.id === memberId);
-        if (!member) {
-          console.error("Could not find member:", memberId);
-          return prevData;
-        }
-        
-        // Check if new parent has space
-        const newParentChildren = prevData.thirdLevel[newParentId] || [];
-        if (newParentChildren.length >= 7) {
-          alert("The selected parent already has 7 downlines");
-          return prevData;
-        }
-        
-        // Create a completely new thirdLevel object to ensure React detects the change
-        const updatedThirdLevel: Record<string, typeof prevData.thirdLevel[string]> = {};
-        
-        // Copy all existing entries
-        Object.keys(prevData.thirdLevel).forEach((key) => {
-          if (key === currentParentId) {
-            // Remove member from old parent
-            updatedThirdLevel[key] = prevData.thirdLevel[key].filter((m) => m.id !== memberId);
-          } else if (key === newParentId) {
-            // Add member to new parent
-            updatedThirdLevel[key] = [...prevData.thirdLevel[key], member];
-          } else {
-            // Keep other entries as is
-            updatedThirdLevel[key] = [...prevData.thirdLevel[key]];
-          }
-        });
-        
-        // If new parent doesn't exist yet, create it
-        if (!prevData.thirdLevel[newParentId]) {
-          updatedThirdLevel[newParentId] = [member];
-        }
-        
-        return {
-          ...prevData,
-          thirdLevel: updatedThirdLevel,
-        };
+  const handleReassign = async (memberId: string, currentLevel: number, newParentId: string) => {
+    // Check if new parent has space
+    let newParentChildren: any[] = [];
+    if (currentLevel === 2) {
+      const parent = mlmData.firstLevel.find(p => p.id === newParentId);
+      if (!parent) {
+        alert("Parent not found");
+        return;
       }
-      return prevData;
-    });
+      newParentChildren = mlmData.secondLevel[newParentId] || [];
+    } else if (currentLevel === 3) {
+      newParentChildren = mlmData.thirdLevel[newParentId] || [];
+    }
+
+    if (newParentChildren.length >= 7) {
+      alert("The selected parent already has 7 downlines");
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/members', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: memberId,
+          parentId: newParentId,
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        // Refresh data from Supabase
+        setDataVersion((v) => v + 1);
+      } else {
+        alert(`Failed to reassign member: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Error reassigning member:', error);
+      alert(`Error reassigning member: ${error.message}`);
+    }
   };
 
   // Get all members for reassignment dropdown

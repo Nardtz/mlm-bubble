@@ -51,10 +51,11 @@ function Bubble({ id, name, startingCapital, x, y, radius, level, isSelected, sh
         cx={x}
         cy={y}
         r={displayRadius}
-        className={`${getLevelColor(level)} stroke-white stroke-2 opacity-90 hover:opacity-100 transition-all duration-500 cursor-pointer`}
+        className={`${getLevelColor(level)} stroke-white stroke-2 opacity-90 hover:opacity-100 cursor-pointer`}
         style={{ 
-          transition: 'cx 0.5s ease, cy 0.5s ease, r 0.5s ease',
-          filter: isSelected ? 'url(#shadow)' : 'none'
+          transition: 'cx 0.8s cubic-bezier(0.4, 0, 0.2, 1), cy 0.8s cubic-bezier(0.4, 0, 0.2, 1), r 0.6s ease-out',
+          filter: isSelected ? 'url(#shadow)' : 'none',
+          transformOrigin: `${x}px ${y}px`
         }}
         onClick={onClick}
       />
@@ -68,7 +69,8 @@ function Bubble({ id, name, startingCapital, x, y, radius, level, isSelected, sh
             dominantBaseline="middle"
             style={{ 
               textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)',
-              letterSpacing: '0.5px'
+              letterSpacing: '0.5px',
+              transition: 'x 0.8s cubic-bezier(0.4, 0, 0.2, 1), y 0.8s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease'
             }}
           >
             {name}
@@ -81,7 +83,8 @@ function Bubble({ id, name, startingCapital, x, y, radius, level, isSelected, sh
             dominantBaseline="middle"
             style={{ 
               textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)',
-              letterSpacing: '0.3px'
+              letterSpacing: '0.3px',
+              transition: 'x 0.8s cubic-bezier(0.4, 0, 0.2, 1), y 0.8s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease'
             }}
           >
             ${startingCapital.toLocaleString()}
@@ -96,7 +99,8 @@ function Bubble({ id, name, startingCapital, x, y, radius, level, isSelected, sh
               style={{ 
                 textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)',
                 letterSpacing: '0.2px',
-                fontSize: fontSize * 0.85
+                fontSize: fontSize * 0.85,
+                transition: 'x 0.8s cubic-bezier(0.4, 0, 0.2, 1), y 0.8s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease'
               }}
             >
               {downlineCount} downline{downlineCount !== 1 ? 's' : ''}
@@ -353,6 +357,9 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
               x2={pos.x}
               y2={pos.y}
               className="stroke-purple-400/30 stroke-1"
+              style={{
+                transition: 'x1 0.8s cubic-bezier(0.4, 0, 0.2, 1), y1 0.8s cubic-bezier(0.4, 0, 0.2, 1), x2 0.8s cubic-bezier(0.4, 0, 0.2, 1), y2 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
             />
           ))}
 
@@ -368,6 +375,9 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
                 x2={pos.x}
                 y2={pos.y}
                 className="stroke-yellow-400/20 stroke-1"
+                style={{
+                  transition: 'x1 0.8s cubic-bezier(0.4, 0, 0.2, 1), y1 0.8s cubic-bezier(0.4, 0, 0.2, 1), x2 0.8s cubic-bezier(0.4, 0, 0.2, 1), y2 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
               />
             );
           })}
@@ -384,6 +394,9 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
                 x2={pos.x}
                 y2={pos.y}
                 className="stroke-orange-400/20 stroke-1"
+                style={{
+                  transition: 'x1 0.8s cubic-bezier(0.4, 0, 0.2, 1), y1 0.8s cubic-bezier(0.4, 0, 0.2, 1), x2 0.8s cubic-bezier(0.4, 0, 0.2, 1), y2 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
               />
             );
           })}
