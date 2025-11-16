@@ -160,7 +160,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
     return basePos;
   });
 
-  // Calculate positions for second level circles - flower pattern (full circle)
+  // Calculate positions for second level circles - positioned on same side as parent relative to center
   const secondLevelPositions: Array<{
     member: typeof data.secondLevel[string][0];
     x: number;
@@ -187,9 +187,20 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
         ? selectedSecondLevelDistance 
         : secondLevelDistance;
       
-      // Position children in a perfect circle (flower pattern) around parent
+      // Calculate angle from center to first level parent
+      const angleToParent = Math.atan2(
+        firstLevelMember.y - centerY,
+        firstLevelMember.x - centerX
+      );
+      
+      // Position children in a semicircle (180 degrees) on the same side as parent relative to center
+      // Start from the parent's side and spread outward
+      const spreadAngle = Math.PI; // 180 degrees
+      const startAngle = angleToParent - spreadAngle / 2;
+      
       secondLevelMembers.forEach((member, index) => {
-        const angle = (index * 2 * Math.PI) / secondLevelMembers.length;
+        // Distribute evenly across the semicircle
+        const angle = startAngle + (index * spreadAngle) / (secondLevelMembers.length - 1 || 1);
         const x = firstLevelMember.x + distance * Math.cos(angle);
         const y = firstLevelMember.y + distance * Math.sin(angle);
         positions.push({ member, x, y, parentId: firstLevelMember.id });
@@ -238,7 +249,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
     return pos;
   });
   
-  // Calculate positions for third level circles - flower pattern (full circle)
+  // Calculate positions for third level circles - positioned on same side as parent relative to its parent
   // Use the final adjusted second level positions
   const thirdLevelPositions: Array<{
     member: typeof data.thirdLevel[string][0];
@@ -256,13 +267,45 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
       ? selectedThirdLevelDistance 
       : thirdLevelDistance;
     
-    // Position children in a perfect circle (flower pattern) around parent
-    thirdLevelMembers.forEach((member, index) => {
-      const angle = (index * 2 * Math.PI) / thirdLevelMembers.length;
-      const x = secondLevelPos.x + distance * Math.cos(angle);
-      const y = secondLevelPos.y + distance * Math.sin(angle);
-      thirdLevelPositions.push({ member, x, y, parentId: secondLevelPos.member.id });
-    });
+    // Find the first level parent of this second level member
+    const firstLevelParent = firstLevelPositionsAdjusted.find(
+      fl => data.secondLevel[fl.id]?.some(sl => sl.id === secondLevelPos.member.id)
+    );
+    
+    if (firstLevelParent) {
+      // Calculate angle from first level parent to second level parent
+      const angleToParent = Math.atan2(
+        secondLevelPos.y - firstLevelParent.y,
+        secondLevelPos.x - firstLevelParent.x
+      );
+      
+      // Position children in a semicircle (180 degrees) on the same side as second level parent relative to first level parent
+      const spreadAngle = Math.PI; // 180 degrees
+      const startAngle = angleToParent - spreadAngle / 2;
+      
+      thirdLevelMembers.forEach((member, index) => {
+        // Distribute evenly across the semicircle
+        const angle = startAngle + (index * spreadAngle) / (thirdLevelMembers.length - 1 || 1);
+        const x = secondLevelPos.x + distance * Math.cos(angle);
+        const y = secondLevelPos.y + distance * Math.sin(angle);
+        thirdLevelPositions.push({ member, x, y, parentId: secondLevelPos.member.id });
+      });
+    } else {
+      // Fallback: if we can't find the first level parent, use the angle from center
+      const angleToParent = Math.atan2(
+        secondLevelPos.y - centerY,
+        secondLevelPos.x - centerX
+      );
+      const spreadAngle = Math.PI;
+      const startAngle = angleToParent - spreadAngle / 2;
+      
+      thirdLevelMembers.forEach((member, index) => {
+        const angle = startAngle + (index * spreadAngle) / (thirdLevelMembers.length - 1 || 1);
+        const x = secondLevelPos.x + distance * Math.cos(angle);
+        const y = secondLevelPos.y + distance * Math.sin(angle);
+        thirdLevelPositions.push({ member, x, y, parentId: secondLevelPos.member.id });
+      });
+    }
   });
   
   // Update third level positions if their parent (second level) is centered OR if third level itself is selected
@@ -274,13 +317,34 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
       return { ...pos, x: centerX, y: centerY };
     }
     
-    // If parent (second level) is centered, position children around center with increased spacing
+    // If parent (second level) is centered, position children in semicircle on same side
     if (parent && selectedId === parent.member.id) {
       const thirdLevelMembers = data.thirdLevel[parent.member.id] || [];
       const memberIndex = thirdLevelMembers.findIndex(m => m.id === pos.member.id);
       if (memberIndex >= 0) {
-        const angle = (memberIndex * 2 * Math.PI) / thirdLevelMembers.length;
-        return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
+        // Find the first level parent to determine the side
+        const firstLevelParent = firstLevelPositionsAdjusted.find(
+          fl => data.secondLevel[fl.id]?.some(sl => sl.id === parent.member.id)
+        );
+        
+        if (firstLevelParent) {
+          // Calculate angle from first level parent to second level parent (now at center)
+          const angleToParent = Math.atan2(
+            centerY - firstLevelParent.y,
+            centerX - firstLevelParent.x
+          );
+          const spreadAngle = Math.PI;
+          const startAngle = angleToParent - spreadAngle / 2;
+          const angle = startAngle + (memberIndex * spreadAngle) / (thirdLevelMembers.length - 1 || 1);
+          return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
+        } else {
+          // Fallback to semicircle around center
+          const angleToParent = Math.atan2(centerY - centerY, centerX - centerX);
+          const spreadAngle = Math.PI;
+          const startAngle = angleToParent - spreadAngle / 2;
+          const angle = startAngle + (memberIndex * spreadAngle) / (thirdLevelMembers.length - 1 || 1);
+          return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
+        }
       }
     }
     
@@ -289,12 +353,31 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
       const thirdLevelChildren = data.thirdLevel[parent.member.id] || [];
       const hasSelectedChild = thirdLevelChildren.some(child => child.id === selectedId);
       if (hasSelectedChild && pos.parentId === parent.member.id) {
-        // Reposition around centered parent
+        // Reposition around centered parent in semicircle
         const thirdLevelMembers = data.thirdLevel[parent.member.id] || [];
         const memberIndex = thirdLevelMembers.findIndex(m => m.id === pos.member.id);
         if (memberIndex >= 0) {
-          const angle = (memberIndex * 2 * Math.PI) / thirdLevelMembers.length;
-          return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
+          // Find the first level parent to determine the side
+          const firstLevelParent = firstLevelPositionsAdjusted.find(
+            fl => data.secondLevel[fl.id]?.some(sl => sl.id === parent.member.id)
+          );
+          
+          if (firstLevelParent) {
+            const angleToParent = Math.atan2(
+              centerY - firstLevelParent.y,
+              centerX - firstLevelParent.x
+            );
+            const spreadAngle = Math.PI;
+            const startAngle = angleToParent - spreadAngle / 2;
+            const angle = startAngle + (memberIndex * spreadAngle) / (thirdLevelMembers.length - 1 || 1);
+            return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
+          } else {
+            // Fallback
+            const spreadAngle = Math.PI;
+            const startAngle = 0 - spreadAngle / 2;
+            const angle = startAngle + (memberIndex * spreadAngle) / (thirdLevelMembers.length - 1 || 1);
+            return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
+          }
         }
       }
     }
