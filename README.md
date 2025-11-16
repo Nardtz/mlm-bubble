@@ -52,7 +52,6 @@ npm start
 ├── components/
 │   └── bubble-visualization.tsx  # Main visualization component
 ├── data/
-│   └── dummy-data.ts        # Sample MLM data
 ├── types/
 │   └── mlm.ts               # TypeScript type definitions
 └── package.json
@@ -60,7 +59,7 @@ npm start
 
 ## Data Structure
 
-The application uses dummy data stored in `data/dummy-data.ts`. The structure supports:
+The application uses Supabase for data storage. The structure supports:
 - ME (main user) with name and starting capital
 - First level downlines (up to 7)
 - Second level downlines (up to 7 per first-level member)
