@@ -4,6 +4,13 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// Helper to check if Supabase is properly configured
+export function isSupabaseConfigured(): boolean {
+  return !!(supabaseUrl && supabaseAnonKey && 
+           supabaseUrl !== 'https://placeholder.supabase.co' && 
+           supabaseAnonKey !== 'placeholder-key');
+}
+
 // Create browser client that syncs to cookies (for server-side access)
 // createBrowserClient automatically handles cookie syncing for SSR
 // During build time, env vars might not be available, so we create a client with placeholder values
