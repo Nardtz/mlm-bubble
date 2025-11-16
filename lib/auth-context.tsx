@@ -76,21 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, username: string) => {
-    // Check if Supabase is configured
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    
-    if (!supabaseUrl || !supabaseAnonKey || 
-        supabaseUrl === 'https://placeholder.supabase.co' || 
-        supabaseAnonKey === 'placeholder-key') {
-      return { 
-        error: { 
-          message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.' 
-        } 
-      };
-    }
-
-    const { data, error } = await supabase.auth.signUp({
+    try {
+      const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -101,73 +88,108 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     });
 
-    if (error) {
-      return { error };
-    }
-
-    // Create user profile in a profiles table (optional, for storing username)
-    if (data.user) {
-      try {
-        await supabase.from('profiles').upsert({
-          id: data.user.id,
-          username: username,
-          email: email,
-          updated_at: new Date().toISOString(),
-        });
-      } catch (profileError) {
-        // Profile table might not exist yet, that's okay
-        console.log('Profile creation skipped:', profileError);
+      if (error) {
+        // Check if error is due to missing configuration
+        if (error.message?.includes('Failed to fetch') || 
+            error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+            error.message?.includes('NetworkError')) {
+          return { 
+            error: { 
+              message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+            } 
+          };
+        }
+        return { error };
       }
 
-      // Initialize "ME" member for new user (only if email is confirmed)
-      // Note: For email verification, this will be called after verification
-      // We'll handle this in a separate flow or after email confirmation
-    }
+      // Create user profile in a profiles table (optional, for storing username)
+      if (data.user) {
+        try {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            username: username,
+            email: email,
+            updated_at: new Date().toISOString(),
+          });
+        } catch (profileError) {
+          // Profile table might not exist yet, that's okay
+          console.log('Profile creation skipped:', profileError);
+        }
 
-    return { error: null };
+        // Initialize "ME" member for new user (only if email is confirmed)
+        // Note: For email verification, this will be called after verification
+        // We'll handle this in a separate flow or after email confirmation
+      }
+
+      return { error: null };
+    } catch (err: any) {
+      // Catch network/DNS errors
+      if (err.message?.includes('Failed to fetch') || 
+          err.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+          err.message?.includes('NetworkError')) {
+        return { 
+          error: { 
+            message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+          } 
+        };
+      }
+      return { error: err };
+    }
   };
 
   const signIn = async (email: string, password: string) => {
-    // Check if Supabase is configured
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    
-    if (!supabaseUrl || !supabaseAnonKey || 
-        supabaseUrl === 'https://placeholder.supabase.co' || 
-        supabaseAnonKey === 'placeholder-key') {
-      return { 
-        error: { 
-          message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.' 
-        } 
-      };
+    // Try to sign in - if Supabase is not configured, the error will be caught
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      // Check if error is due to missing configuration (network/DNS error)
+      if (error && (error.message?.includes('Failed to fetch') || 
+                    error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+                    error.message?.includes('NetworkError'))) {
+        return { 
+          error: { 
+            message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+          } 
+        };
+      }
+
+      if (error) {
+        return { error };
+      }
+
+      // If user exists but email is not confirmed, provide helpful message
+      if (data.user && !data.session) {
+        return { 
+          error: { 
+            message: 'Please verify your email before signing in. Check your inbox for the verification link.' 
+          } 
+        };
+      }
+
+      // The browser client from @supabase/ssr automatically syncs to cookies
+      // No need to manually set session - it's already handled
+      if (data.session) {
+        // Wait a moment for cookies to be set
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      return { error: null };
+    } catch (err: any) {
+      // Catch network/DNS errors
+      if (err.message?.includes('Failed to fetch') || 
+          err.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+          err.message?.includes('NetworkError')) {
+        return { 
+          error: { 
+            message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+          } 
+        };
+      }
+      return { error: err };
     }
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      return { error };
-    }
-
-    // If user exists but email is not confirmed, provide helpful message
-    if (data.user && !data.session) {
-      return { 
-        error: { 
-          message: 'Please verify your email before signing in. Check your inbox for the verification link.' 
-        } 
-      };
-    }
-
-    // The browser client from @supabase/ssr automatically syncs to cookies
-    // No need to manually set session - it's already handled
-    if (data.session) {
-      // Wait a moment for cookies to be set
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    return { error: null };
   };
 
   const signOut = async () => {
@@ -175,45 +197,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
-    // Check if Supabase is configured
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    
-    if (!supabaseUrl || !supabaseAnonKey || 
-        supabaseUrl === 'https://placeholder.supabase.co' || 
-        supabaseAnonKey === 'placeholder-key') {
-      return { 
-        error: { 
-          message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.' 
-        } 
-      };
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      
+      if (error && (error.message?.includes('Failed to fetch') || 
+                    error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+                    error.message?.includes('NetworkError'))) {
+        return { 
+          error: { 
+            message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+          } 
+        };
+      }
+      
+      return { error };
+    } catch (err: any) {
+      if (err.message?.includes('Failed to fetch') || 
+          err.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+          err.message?.includes('NetworkError')) {
+        return { 
+          error: { 
+            message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+          } 
+        };
+      }
+      return { error: err };
     }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    return { error };
   };
 
   const updatePassword = async (newPassword: string) => {
-    // Check if Supabase is configured
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    
-    if (!supabaseUrl || !supabaseAnonKey || 
-        supabaseUrl === 'https://placeholder.supabase.co' || 
-        supabaseAnonKey === 'placeholder-key') {
-      return { 
-        error: { 
-          message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.' 
-        } 
-      };
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      
+      if (error && (error.message?.includes('Failed to fetch') || 
+                    error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+                    error.message?.includes('NetworkError'))) {
+        return { 
+          error: { 
+            message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+          } 
+        };
+      }
+      
+      return { error };
+    } catch (err: any) {
+      if (err.message?.includes('Failed to fetch') || 
+          err.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+          err.message?.includes('NetworkError')) {
+        return { 
+          error: { 
+            message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+          } 
+        };
+      }
+      return { error: err };
     }
-
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-    return { error };
   };
 
   return (

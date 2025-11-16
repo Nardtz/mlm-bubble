@@ -15,7 +15,11 @@ export function isSupabaseConfigured(): boolean {
 // createBrowserClient automatically handles cookie syncing for SSR
 // During build time, env vars might not be available, so we create a client with placeholder values
 // The actual error will be thrown when the client is used, not at module load time
-export const supabase = supabaseUrl && supabaseAnonKey
+// Note: NEXT_PUBLIC_* variables are embedded at BUILD TIME, so if you add them in Vercel,
+// you MUST redeploy for them to be available
+export const supabase = supabaseUrl && supabaseAnonKey && 
+                        supabaseUrl !== 'https://placeholder.supabase.co' &&
+                        supabaseAnonKey !== 'placeholder-key'
   ? createBrowserClient(supabaseUrl, supabaseAnonKey)
   : createBrowserClient('https://placeholder.supabase.co', 'placeholder-key');
 
