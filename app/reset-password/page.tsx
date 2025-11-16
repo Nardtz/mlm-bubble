@@ -1,34 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-export default function SignUpPage() {
-  const [email, setEmail] = useState("");
+export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const { signUp } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const { updatePassword, user } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    // Wait a moment for session to be established from the reset link
+    const timer = setTimeout(() => {
+      setCheckingSession(false);
+      // If no user after timeout, they might need to click the link again
+      if (!user) {
+        setError("Invalid or expired reset link. Please request a new password reset.");
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    if (!username.trim()) {
-      setError("Username is required");
-      setLoading(false);
-      return;
-    }
-
-    if (!email.trim()) {
-      setError("Email is required");
+    if (!password.trim()) {
+      setError("Password is required");
       setLoading(false);
       return;
     }
@@ -45,10 +51,10 @@ export default function SignUpPage() {
       return;
     }
 
-    const { error: signUpError } = await signUp(email, password, username);
+    const { error: updateError } = await updatePassword(password);
 
-    if (signUpError) {
-      setError(signUpError.message || "Failed to create account");
+    if (updateError) {
+      setError(updateError.message || "Failed to update password");
       setLoading(false);
     } else {
       setSuccess(true);
@@ -60,47 +66,35 @@ export default function SignUpPage() {
     }
   };
 
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800/70 rounded-lg p-8 border border-purple-500/50 max-w-md w-full">
+          <div className="text-white text-center">
+            <p>Verifying reset link...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
       <div className="bg-slate-800/70 rounded-lg p-8 border border-purple-500/50 max-w-md w-full">
-        <h1 className="text-3xl font-bold text-white mb-2">Sign Up</h1>
-        <p className="text-white/70 mb-6">Create your account to manage your MLM downlines</p>
+        <h1 className="text-3xl font-bold text-white mb-2">Reset Password</h1>
+        <p className="text-white/70 mb-6">Enter your new password</p>
 
         {success ? (
           <div className="bg-green-600/20 border border-green-500/50 rounded-lg p-4 mb-4">
-            <p className="text-green-400 font-semibold">Account created successfully!</p>
+            <p className="text-green-400 font-semibold">Password updated successfully!</p>
             <p className="text-green-300 text-sm mt-2">
-              Please check your email to verify your account. You'll be redirected to login in a moment...
+              Redirecting to login page...
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-white mb-2">Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-700 text-white rounded-lg border border-purple-500/50 focus:border-purple-500 focus:outline-none"
-                placeholder="Choose a username"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-white mb-2">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-700 text-white rounded-lg border border-purple-500/50 focus:border-purple-500 focus:outline-none"
-                placeholder="your.email@example.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-white mb-2">Password</label>
+              <label className="block text-white mb-2">New Password</label>
               <input
                 type="password"
                 value={password}
@@ -113,7 +107,7 @@ export default function SignUpPage() {
             </div>
 
             <div>
-              <label className="block text-white mb-2">Confirm Password</label>
+              <label className="block text-white mb-2">Confirm New Password</label>
               <input
                 type="password"
                 value={confirmPassword}
@@ -136,14 +130,14 @@ export default function SignUpPage() {
               disabled={loading}
               className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
             >
-              {loading ? "Creating Account..." : "Sign Up"}
+              {loading ? "Updating Password..." : "Update Password"}
             </button>
           </form>
         )}
 
         <div className="mt-6 text-center">
           <p className="text-white/70">
-            Already have an account?{" "}
+            Remember your password?{" "}
             <Link href="/login" className="text-purple-400 hover:text-purple-300 font-semibold">
               Sign In
             </Link>

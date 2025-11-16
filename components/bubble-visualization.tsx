@@ -15,10 +15,11 @@ interface BubbleProps {
   showText: boolean;
   scaleFactor?: number; // Additional scale factor for better visibility
   downlineCount?: number; // Number of circles under this one
+  opacity?: number; // Opacity for the bubble (0-1)
   onClick: () => void;
 }
 
-function Bubble({ id, name, startingCapital, x, y, radius, level, isSelected, showText, scaleFactor = 1, downlineCount = 0, onClick }: BubbleProps) {
+function Bubble({ id, name, startingCapital, x, y, radius, level, isSelected, showText, scaleFactor = 1, downlineCount = 0, opacity = 1, onClick }: BubbleProps) {
   const getLevelColor = (level: number) => {
     switch (level) {
       case 0:
@@ -51,11 +52,12 @@ function Bubble({ id, name, startingCapital, x, y, radius, level, isSelected, sh
         cx={x}
         cy={y}
         r={displayRadius}
-        className={`${getLevelColor(level)} stroke-white stroke-2 opacity-90 hover:opacity-100 cursor-pointer`}
+        className={`${getLevelColor(level)} stroke-white stroke-2 cursor-pointer`}
         style={{ 
-          transition: 'cx 0.8s cubic-bezier(0.4, 0, 0.2, 1), cy 0.8s cubic-bezier(0.4, 0, 0.2, 1), r 0.6s ease-out',
+          transition: 'cx 0.8s cubic-bezier(0.4, 0, 0.2, 1), cy 0.8s cubic-bezier(0.4, 0, 0.2, 1), r 0.6s ease-out, opacity 0.3s ease',
           filter: isSelected ? 'url(#shadow)' : 'none',
-          transformOrigin: `${x}px ${y}px`
+          transformOrigin: `${x}px ${y}px`,
+          opacity: opacity
         }}
         onClick={onClick}
       />
@@ -166,25 +168,78 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
     parentId: string;
   }> = [];
   
-  firstLevelPositions.forEach((firstLevelMember) => {
-    const secondLevelMembers = data.secondLevel[firstLevelMember.id] || [];
-    if (secondLevelMembers.length === 0) return;
+  // Calculate second level positions based on adjusted first level positions
+  // We'll recalculate after firstLevelPositionsAdjusted is created
+  const calculateSecondLevelPositions = (firstLevelPos: typeof firstLevelPositions) => {
+    const positions: Array<{
+      member: typeof data.secondLevel[string][0];
+      x: number;
+      y: number;
+      parentId: string;
+    }> = [];
     
-    // Use larger distance if parent is selected
-    const distance = selectedId === firstLevelMember.id 
-      ? selectedSecondLevelDistance 
-      : secondLevelDistance;
-    
-    // Position children in a perfect circle (flower pattern) around parent
-    secondLevelMembers.forEach((member, index) => {
-      const angle = (index * 2 * Math.PI) / secondLevelMembers.length;
-      const x = firstLevelMember.x + distance * Math.cos(angle);
-      const y = firstLevelMember.y + distance * Math.sin(angle);
-      secondLevelPositions.push({ member, x, y, parentId: firstLevelMember.id });
+    firstLevelPos.forEach((firstLevelMember) => {
+      const secondLevelMembers = data.secondLevel[firstLevelMember.id] || [];
+      if (secondLevelMembers.length === 0) return;
+      
+      // Use larger distance if parent is selected
+      const distance = selectedId === firstLevelMember.id 
+        ? selectedSecondLevelDistance 
+        : secondLevelDistance;
+      
+      // Position children in a perfect circle (flower pattern) around parent
+      secondLevelMembers.forEach((member, index) => {
+        const angle = (index * 2 * Math.PI) / secondLevelMembers.length;
+        const x = firstLevelMember.x + distance * Math.cos(angle);
+        const y = firstLevelMember.y + distance * Math.sin(angle);
+        positions.push({ member, x, y, parentId: firstLevelMember.id });
+      });
     });
+    
+    return positions;
+  };
+  
+  // Also center the parent (first level) if a second level child is selected
+  const firstLevelPositionsAdjusted = firstLevelPositions.map((pos) => {
+    // Check if any of this first level's second level children is selected
+    const secondLevelChildren = data.secondLevel[pos.id] || [];
+    const hasSelectedChild = secondLevelChildren.some(child => child.id === selectedId);
+    if (hasSelectedChild) {
+      // Center the parent when a child is selected
+      return { ...pos, x: centerX, y: centerY };
+    }
+    return pos;
   });
-
+  
+  // Recalculate second level positions based on adjusted first level positions
+  const secondLevelPositionsRecalculated = calculateSecondLevelPositions(firstLevelPositionsAdjusted);
+  
+  // If a second level circle is selected, center it
+  const secondLevelPositionsAdjusted = secondLevelPositionsRecalculated.map((pos) => {
+    if (selectedId === pos.member.id) {
+      // Center this circle
+      return { ...pos, x: centerX, y: centerY };
+    }
+    return pos;
+  });
+  
+  // Check if a third level circle is selected (before calculating third level positions)
+  const isThirdLevelSelected = selectedId && Object.values(data.thirdLevel).flat().some(m => m.id === selectedId);
+  
+  // Also center the parent (second level) if a third level child is selected
+  const secondLevelPositionsFinal = secondLevelPositionsAdjusted.map((pos) => {
+    // Check if any of this second level's third level children is selected
+    const thirdLevelChildren = data.thirdLevel[pos.member.id] || [];
+    const hasSelectedChild = thirdLevelChildren.some(child => child.id === selectedId);
+    if (hasSelectedChild) {
+      // Center the parent when a child is selected
+      return { ...pos, x: centerX, y: centerY };
+    }
+    return pos;
+  });
+  
   // Calculate positions for third level circles - flower pattern (full circle)
+  // Use the final adjusted second level positions
   const thirdLevelPositions: Array<{
     member: typeof data.thirdLevel[string][0];
     x: number;
@@ -192,7 +247,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
     parentId: string;
   }> = [];
   
-  secondLevelPositions.forEach((secondLevelPos) => {
+  secondLevelPositionsFinal.forEach((secondLevelPos) => {
     const thirdLevelMembers = data.thirdLevel[secondLevelPos.member.id] || [];
     if (thirdLevelMembers.length === 0) return;
     
@@ -210,20 +265,17 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
     });
   });
   
-  // If a second level circle is selected, center it and its children
-  const secondLevelPositionsAdjusted = secondLevelPositions.map((pos) => {
+  // Update third level positions if their parent (second level) is centered OR if third level itself is selected
+  const thirdLevelPositionsAdjusted = thirdLevelPositions.map((pos) => {
+    const parent = secondLevelPositionsFinal.find(p => p.member.id === pos.parentId);
+    
+    // If this third level circle itself is selected, center it
     if (selectedId === pos.member.id) {
-      // Center this circle
       return { ...pos, x: centerX, y: centerY };
     }
-    return pos;
-  });
-  
-  // Update third level positions if their parent (second level) is centered
-  const thirdLevelPositionsAdjusted = thirdLevelPositions.map((pos) => {
-    const parent = secondLevelPositionsAdjusted.find(p => p.member.id === pos.parentId);
+    
+    // If parent (second level) is centered, position children around center with increased spacing
     if (parent && selectedId === parent.member.id) {
-      // Parent is centered, position children around center with increased spacing
       const thirdLevelMembers = data.thirdLevel[parent.member.id] || [];
       const memberIndex = thirdLevelMembers.findIndex(m => m.id === pos.member.id);
       if (memberIndex >= 0) {
@@ -231,8 +283,69 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
         return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
       }
     }
+    
+    // If a third level child is selected, also center its parent (second level)
+    if (selectedId && parent) {
+      const thirdLevelChildren = data.thirdLevel[parent.member.id] || [];
+      const hasSelectedChild = thirdLevelChildren.some(child => child.id === selectedId);
+      if (hasSelectedChild && pos.parentId === parent.member.id) {
+        // Reposition around centered parent
+        const thirdLevelMembers = data.thirdLevel[parent.member.id] || [];
+        const memberIndex = thirdLevelMembers.findIndex(m => m.id === pos.member.id);
+        if (memberIndex >= 0) {
+          const angle = (memberIndex * 2 * Math.PI) / thirdLevelMembers.length;
+          return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
+        }
+      }
+    }
+    
     return pos;
   });
+
+  // Get all IDs in the selected hierarchy (selected + all descendants recursively)
+  const getSelectedHierarchyIds = (id: string | null): Set<string> => {
+    const ids = new Set<string>();
+    if (!id) return ids;
+    
+    ids.add(id);
+    
+    // If it's ME, add all first level and their descendants
+    if (id === "me") {
+      data.firstLevel.forEach(m => {
+        ids.add(m.id);
+        // Add all second level children
+        const secondLevel = data.secondLevel[m.id] || [];
+        secondLevel.forEach(sl => {
+          ids.add(sl.id);
+          // Add all third level children
+          const thirdLevel = data.thirdLevel[sl.id] || [];
+          thirdLevel.forEach(tl => ids.add(tl.id));
+        });
+      });
+    }
+    
+    // If it's a first level member, add all its descendants (second and third level)
+    const firstLevelMember = data.firstLevel.find(m => m.id === id);
+    if (firstLevelMember) {
+      const secondLevel = data.secondLevel[firstLevelMember.id] || [];
+      secondLevel.forEach(sl => {
+        ids.add(sl.id);
+        // Add all third level children of this second level member
+        const thirdLevel = data.thirdLevel[sl.id] || [];
+        thirdLevel.forEach(tl => ids.add(tl.id));
+      });
+    }
+    
+    // If it's a second level member, add all its third level children
+    Object.values(data.secondLevel).flat().forEach(secondLevelMember => {
+      if (secondLevelMember.id === id) {
+        const thirdLevel = data.thirdLevel[secondLevelMember.id] || [];
+        thirdLevel.forEach(m => ids.add(m.id));
+      }
+    });
+    
+    return ids;
+  };
 
   // Get IDs that should be enlarged (selected + its direct children only)
   const getEnlargedIds = (id: string | null): Set<string> => {
@@ -271,7 +384,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
     // If this circle is selected, make it bigger based on its level
     if (circleId === selectedId) {
       if (level === 2) return 2.5; // Second level selected - make it much bigger
-      if (level === 3) return 2.0; // Third level selected - make it bigger
+      if (level === 3) return 3.0; // Third level selected - triple the size
       return 1; // First level or ME - use base 1.3x from isSelected
     }
     
@@ -321,6 +434,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
 
   const enlargedIds = getEnlargedIds(selectedId);
   const textVisibleIds = getTextVisibleIds(selectedId);
+  const selectedHierarchyIds = getSelectedHierarchyIds(selectedId);
 
   return (
     <div className="w-full h-full overflow-auto bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-8">
@@ -349,7 +463,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
             </filter>
           </defs>
           {/* Connection lines from ME to first level */}
-          {firstLevelPositions.map((pos) => (
+          {firstLevelPositionsAdjusted.map((pos) => (
             <line
               key={`line-me-${pos.id}`}
               x1={centerX}
@@ -364,8 +478,8 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
           ))}
 
           {/* Connection lines from first level to second level */}
-          {secondLevelPositionsAdjusted.map((pos) => {
-            const parent = firstLevelPositions.find((p) => p.id === pos.parentId);
+          {secondLevelPositionsFinal.map((pos) => {
+            const parent = firstLevelPositionsAdjusted.find((p) => p.id === pos.parentId);
             if (!parent) return null;
             return (
               <line
@@ -384,7 +498,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
 
           {/* Connection lines from second level to third level */}
           {thirdLevelPositionsAdjusted.map((pos) => {
-            const parent = secondLevelPositionsAdjusted.find((p) => p.member.id === pos.parentId);
+            const parent = secondLevelPositionsFinal.find((p) => p.member.id === pos.parentId);
             if (!parent) return null;
             return (
               <line
@@ -401,10 +515,10 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
             );
           })}
 
-          {/* Render unselected bubbles first (background) */}
+          {/* Render unselected bubbles first (background) with reduced opacity */}
           {/* Third level bubbles - unselected */}
           {thirdLevelPositionsAdjusted
-            .filter((pos) => !enlargedIds.has(pos.member.id))
+            .filter((pos) => !selectedHierarchyIds.has(pos.member.id))
             .map((pos) => (
               <Bubble
                 key={pos.member.id}
@@ -419,13 +533,14 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
                 showText={false}
                 scaleFactor={1}
                 downlineCount={0}
+                opacity={0.7}
                 onClick={() => setSelectedId(selectedId === pos.member.id ? null : pos.member.id)}
               />
             ))}
 
           {/* Second level bubbles - unselected */}
-          {secondLevelPositionsAdjusted
-            .filter((pos) => !enlargedIds.has(pos.member.id))
+          {secondLevelPositionsFinal
+            .filter((pos) => !selectedHierarchyIds.has(pos.member.id))
             .map((pos) => (
               <Bubble
                 key={pos.member.id}
@@ -440,13 +555,14 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
                 showText={false}
                 scaleFactor={1}
                 downlineCount={(data.thirdLevel[pos.member.id] || []).length}
+                opacity={0.7}
                 onClick={() => setSelectedId(selectedId === pos.member.id ? null : pos.member.id)}
               />
             ))}
 
           {/* First level bubbles - unselected */}
-          {firstLevelPositions
-            .filter((pos) => !enlargedIds.has(pos.id))
+          {firstLevelPositionsAdjusted
+            .filter((pos) => !selectedHierarchyIds.has(pos.id))
             .map((pos) => (
               <Bubble
                 key={pos.id}
@@ -461,6 +577,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
                 showText={true}
                 scaleFactor={1}
                 downlineCount={(data.secondLevel[pos.id] || []).length}
+                opacity={0.7}
                 onClick={() => setSelectedId(selectedId === pos.id ? null : pos.id)}
               />
             ))}
@@ -479,6 +596,7 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
               showText={true}
               scaleFactor={1}
               downlineCount={data.firstLevel.length}
+              opacity={selectedId && selectedId !== "me" ? 0.3 : 1}
               onClick={() => setSelectedId(selectedId === "me" ? null : "me")}
             />
           )}
@@ -497,13 +615,14 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
               showText={false}
               scaleFactor={1}
               downlineCount={0}
+              opacity={0.3}
               onClick={() => setSelectedId(null)}
             />
           )}
 
-          {/* First level bubbles - selected */}
-          {firstLevelPositions
-            .filter((pos) => enlargedIds.has(pos.id))
+          {/* First level bubbles - selected (on top) */}
+          {firstLevelPositionsAdjusted
+            .filter((pos) => selectedHierarchyIds.has(pos.id))
             .map((pos) => (
               <Bubble
                 key={pos.id}
@@ -514,17 +633,18 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
                 y={pos.y}
                 radius={firstLevelRadius}
                 level={1}
-                isSelected={true}
-                showText={true}
+                isSelected={enlargedIds.has(pos.id)}
+                showText={textVisibleIds.has(pos.id)}
                 scaleFactor={1}
                 downlineCount={(data.secondLevel[pos.id] || []).length}
+                opacity={1}
                 onClick={() => setSelectedId(selectedId === pos.id ? null : pos.id)}
               />
             ))}
 
-          {/* Second level bubbles - selected (bigger when parent is clicked) */}
-          {secondLevelPositionsAdjusted
-            .filter((pos) => enlargedIds.has(pos.member.id))
+          {/* Second level bubbles - selected (on top) */}
+          {secondLevelPositionsFinal
+            .filter((pos) => selectedHierarchyIds.has(pos.member.id))
             .map((pos) => (
               <Bubble
                 key={pos.member.id}
@@ -535,19 +655,20 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
                 y={pos.y}
                 radius={secondLevelRadius}
                 level={2}
-                isSelected={true}
+                isSelected={enlargedIds.has(pos.member.id)}
                 showText={textVisibleIds.has(pos.member.id)}
                 scaleFactor={getScaleFactor(pos.member.id, 2, pos.parentId)}
                 downlineCount={(data.thirdLevel[pos.member.id] || []).length}
+                opacity={1}
                 onClick={() => setSelectedId(selectedId === pos.member.id ? null : pos.member.id)}
               />
             ))}
 
-          {/* Third level bubbles - selected (bigger when parent is clicked) */}
+          {/* Third level bubbles - selected (on top) */}
           {thirdLevelPositionsAdjusted
-            .filter((pos) => enlargedIds.has(pos.member.id))
+            .filter((pos) => selectedHierarchyIds.has(pos.member.id))
             .map((pos) => {
-              const parent = secondLevelPositionsAdjusted.find((p) => p.member.id === pos.parentId);
+              const parent = secondLevelPositionsFinal.find((p) => p.member.id === pos.parentId);
               return (
                 <Bubble
                   key={pos.member.id}
@@ -558,10 +679,11 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
                   y={pos.y}
                   radius={thirdLevelRadius}
                   level={3}
-                  isSelected={true}
+                  isSelected={enlargedIds.has(pos.member.id)}
                   showText={textVisibleIds.has(pos.member.id)}
                   scaleFactor={getScaleFactor(pos.member.id, 3, pos.parentId)}
                   downlineCount={0}
+                  opacity={1}
                   onClick={() => setSelectedId(selectedId === pos.member.id ? null : pos.member.id)}
                 />
               );
