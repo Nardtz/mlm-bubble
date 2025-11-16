@@ -88,7 +88,7 @@ export default function Home() {
     fetchData();
   }, [user, router]);
 
-  if (authLoading || (loading && !dataLoaded)) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-white text-xl">Loading...</div>
@@ -103,6 +103,10 @@ export default function Home() {
       </div>
     );
   }
+
+  // Don't render visualization until data is actually loaded
+  // Check if we're still loading OR if the ME name is still "Loading..." (initial state)
+  const isDataLoading = loading || !dataLoaded || mlmData.me.name === "Loading...";
 
   return (
     <div className="relative">
@@ -119,7 +123,16 @@ export default function Home() {
           Error loading data: {error}
         </div>
       )}
-      <BubbleVisualization data={mlmData} />
+      {isDataLoading ? (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-white text-xl mb-2">Loading your data...</div>
+            <div className="text-white/70 text-sm">Please wait while we fetch your downlines</div>
+          </div>
+        </div>
+      ) : (
+        <BubbleVisualization data={mlmData} />
+      )}
     </div>
   );
 }
