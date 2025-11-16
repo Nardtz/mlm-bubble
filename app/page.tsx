@@ -108,6 +108,8 @@ export default function Home() {
   // Check if we're still loading OR if the ME name is still "Loading..." (initial state)
   const isDataLoading = loading || !dataLoaded || mlmData.me.name === "Loading...";
 
+  const { signOut } = useAuth();
+
   return (
     <div className="relative">
       <div className="absolute top-4 right-4 z-10 flex gap-2">
@@ -117,6 +119,15 @@ export default function Home() {
         >
           Admin Panel
         </Link>
+        <button
+          onClick={async () => {
+            await signOut();
+            router.push('/login');
+          }}
+          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-semibold shadow-lg"
+        >
+          Logout
+        </button>
       </div>
       {error && !error.includes('Unauthorized') && (
         <div className="absolute top-16 right-4 z-10 px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm">

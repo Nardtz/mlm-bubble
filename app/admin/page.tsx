@@ -314,12 +314,23 @@ export default function AdminPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-4xl font-bold text-white">BG World Admin</h1>
-          <a
-            href="/"
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-          >
-            View Visualization
-          </a>
+          <div className="flex gap-2">
+            <a
+              href="/"
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+            >
+              View Visualization
+            </a>
+            <button
+              onClick={async () => {
+                await signOut();
+                router.push('/login');
+              }}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
