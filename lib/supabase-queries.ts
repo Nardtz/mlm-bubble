@@ -192,11 +192,12 @@ export async function updateMemberParent(id: string, newParentId: string | null,
 }
 
 // Get children count for a member
-export async function getChildrenCount(parentId: string): Promise<number> {
+export async function getChildrenCount(parentId: string, userId: string, supabase: SupabaseClient): Promise<number> {
   const { count, error } = await supabase
     .from('members')
-    .select('*', { count: 'exact', head: true })
-    .eq('parent_id', parentId);
+    .select('id', { count: 'exact', head: true })
+    .eq('parent_id', parentId)
+    .eq('user_id', userId);
 
   if (error) {
     console.error('Error getting children count:', error);
