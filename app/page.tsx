@@ -8,10 +8,22 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 
+// Empty MLM data structure to avoid showing dummy data
+const emptyMLMData: MLMData = {
+  me: {
+    name: "Loading...",
+    startingCapital: 0,
+  },
+  firstLevel: [],
+  secondLevel: {},
+  thirdLevel: {},
+};
+
 export default function Home() {
-  const [mlmData, setMlmData] = useState<MLMData>(dummyMLMData);
+  const [mlmData, setMlmData] = useState<MLMData>(emptyMLMData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -53,6 +65,7 @@ export default function Home() {
         if (result.success && result.data) {
           setMlmData(result.data);
           setError(null);
+          setDataLoaded(true);
         } else {
           console.error('Failed to fetch data:', result.error);
           if (result.error?.includes('Unauthorized')) {
@@ -60,14 +73,14 @@ export default function Home() {
             return;
           }
           setError(result.error || 'Failed to load data');
-          // Fall back to dummy data
-          setMlmData(dummyMLMData);
+          // Don't fall back to dummy data - keep empty structure
+          setDataLoaded(true);
         }
       } catch (err: any) {
         console.error('Error fetching MLM data:', err);
         setError(err.message);
-        // Fall back to dummy data
-        setMlmData(dummyMLMData);
+        // Don't fall back to dummy data - keep empty structure
+        setDataLoaded(true);
       } finally {
         setLoading(false);
       }
@@ -76,7 +89,7 @@ export default function Home() {
     fetchData();
   }, [user, router]);
 
-  if (authLoading || loading) {
+  if (authLoading || (loading && !dataLoaded)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-white text-xl">Loading...</div>
@@ -104,7 +117,7 @@ export default function Home() {
       </div>
       {error && !error.includes('Unauthorized') && (
         <div className="absolute top-16 right-4 z-10 px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm">
-          Using fallback data: {error}
+          Error loading data: {error}
         </div>
       )}
       <BubbleVisualization data={mlmData} />
