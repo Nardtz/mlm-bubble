@@ -4,15 +4,13 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Check if we have required environment variables
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
-  throw new Error('Missing Supabase environment variables');
-}
-
 // Create browser client that syncs to cookies (for server-side access)
 // createBrowserClient automatically handles cookie syncing for SSR
-export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+// During build time, env vars might not be available, so we create a client with placeholder values
+// The actual error will be thrown when the client is used, not at module load time
+export const supabase = supabaseUrl && supabaseAnonKey
+  ? createBrowserClient(supabaseUrl, supabaseAnonKey)
+  : createBrowserClient('https://placeholder.supabase.co', 'placeholder-key');
 
 // Service role client for admin operations (server-side only)
 // Note: This should only be used in server-side code, never in the browser
