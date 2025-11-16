@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import BubbleVisualization from "@/components/bubble-visualization";
 import { MLMData } from "@/types/mlm";
-import { dummyMLMData } from "@/data/dummy-data";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";

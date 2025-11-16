@@ -2,13 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { MLMData } from "@/types/mlm";
-import { dummyMLMData } from "@/data/dummy-data";
 import BubbleVisualization from "@/components/bubble-visualization";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 
+// Empty MLM data structure to avoid showing dummy data
+const emptyMLMData: MLMData = {
+  me: {
+    name: "Loading...",
+    startingCapital: 0,
+  },
+  firstLevel: [],
+  secondLevel: {},
+  thirdLevel: {},
+};
+
 export default function AdminPage() {
-  const [mlmData, setMlmData] = useState<MLMData>(dummyMLMData);
+  const [mlmData, setMlmData] = useState<MLMData>(emptyMLMData);
   const [dataVersion, setDataVersion] = useState(0); // Force re-render when data changes
   const [loading, setLoading] = useState(true);
   const { user, loading: authLoading, signOut } = useAuth();
@@ -43,13 +53,13 @@ export default function AdminPage() {
           router.push('/login');
           return;
         }
-        // Fall back to dummy data
-        setMlmData(dummyMLMData);
+        // Keep empty structure on error
+        setMlmData(emptyMLMData);
       }
     } catch (err: any) {
       console.error('Error fetching MLM data:', err);
-      // Fall back to dummy data
-      setMlmData(dummyMLMData);
+      // Keep empty structure on error
+      setMlmData(emptyMLMData);
     } finally {
       setLoading(false);
     }
