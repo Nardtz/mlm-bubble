@@ -37,6 +37,7 @@ export default function AdminPage() {
   const fetchData = async () => {
     if (!user) return;
     
+    setLoading(true);
     try {
       // First, ensure user has "ME" member initialized
       await fetch('/api/initialize-user', { method: 'POST' });
@@ -53,12 +54,12 @@ export default function AdminPage() {
           router.push('/login');
           return;
         }
-        // Keep empty structure on error
+        // Keep empty structure on error, but mark as loaded
         setMlmData(emptyMLMData);
       }
     } catch (err: any) {
       console.error('Error fetching MLM data:', err);
-      // Keep empty structure on error
+      // Keep empty structure on error, but mark as loaded
       setMlmData(emptyMLMData);
     } finally {
       setLoading(false);
@@ -289,6 +290,24 @@ export default function AdminPage() {
       }, 2000);
     }
   };
+
+  // Check if data is still loading
+  const isDataLoading = loading || mlmData.me.name === "Loading...";
+
+  if (authLoading || isDataLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-white text-xl mb-2">Loading your data...</div>
+          <div className="text-white/70 text-sm">Please wait while we fetch your downlines</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null; // Will redirect to login
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
