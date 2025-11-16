@@ -338,10 +338,10 @@ export default function BubbleVisualization({ data }: BubbleVisualizationProps) 
           const angle = startAngle + (memberIndex * spreadAngle) / (thirdLevelMembers.length - 1 || 1);
           return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
         } else {
-          // Fallback to semicircle around center
-          const angleToParent = Math.atan2(centerY - centerY, centerX - centerX);
+          // Fallback: use angle from center to the second level parent's original position
+          // This maintains the side positioning even when first level parent isn't found
           const spreadAngle = Math.PI;
-          const startAngle = angleToParent - spreadAngle / 2;
+          const startAngle = 0 - spreadAngle / 2; // Default to left side
           const angle = startAngle + (memberIndex * spreadAngle) / (thirdLevelMembers.length - 1 || 1);
           return { ...pos, x: centerX + selectedThirdLevelDistance * Math.cos(angle), y: centerY + selectedThirdLevelDistance * Math.sin(angle) };
         }
