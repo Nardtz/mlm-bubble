@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { addMember, deleteMember, updateMemberParent } from '@/lib/supabase-queries';
 import { createClient } from '@/lib/supabase-server';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 async function getUserId() {
   const supabase = await createClient();
   const { data: { user }, error: userError } = await supabase.auth.getUser();

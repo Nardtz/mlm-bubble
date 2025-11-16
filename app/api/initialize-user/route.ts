@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { initializeUserMLM } from '@/lib/initialize-user';
 import { createClient } from '@/lib/supabase-server';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 export async function POST() {
   try {
     const supabase = await createClient();
