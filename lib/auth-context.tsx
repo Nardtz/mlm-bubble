@@ -229,18 +229,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updatePassword = async (newPassword: string) => {
     try {
+      // First, ensure we have a valid session
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !currentSession) {
+        return {
+          error: {
+            message: 'Auth session missing! Please click the reset link from your email again to establish a session.'
+          }
+        };
+      }
+
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
       
-      if (error && (error.message?.includes('Failed to fetch') || 
-                    error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
-                    error.message?.includes('NetworkError'))) {
-        return { 
-          error: { 
-            message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
-          } 
-        };
+      if (error) {
+        // Provide user-friendly error messages
+        if (error.message?.includes('session') || error.message?.includes('Auth session missing')) {
+          return {
+            error: {
+              message: 'Session expired. Please click the reset link from your email again to continue.'
+            }
+          };
+        }
+        
+        if (error.message?.includes('Failed to fetch') || 
+            error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+            error.message?.includes('NetworkError')) {
+          return { 
+            error: { 
+              message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables in Vercel settings and redeploy.' 
+            } 
+          };
+        }
       }
       
       return { error };
@@ -254,6 +276,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } 
         };
       }
+      
+      // Handle session-related errors
+      if (err.message?.includes('session') || err.message?.includes('Auth session missing')) {
+        return {
+          error: {
+            message: 'Session expired. Please click the reset link from your email again to continue.'
+          }
+        };
+      }
+      
       return { error: err };
     }
   };

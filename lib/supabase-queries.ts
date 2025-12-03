@@ -207,3 +207,140 @@ export async function getChildrenCount(parentId: string, userId: string, supabas
   return count || 0;
 }
 
+// Check if user is super admin
+export async function isSuperAdmin(userId: string, supabase: SupabaseClient): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('is_super_admin')
+    .eq('id', userId)
+    .single();
+
+  if (error || !data) {
+    console.error('Error checking super admin status:', error);
+    return false;
+  }
+
+  return data.is_super_admin === true;
+}
+
+// Get all users (for super admin)
+export async function getAllUsers(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, username, email')
+    .order('username', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching all users:', error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+// Get all members from all users (for super admin)
+export async function getAllMembersForSuperAdmin(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from('members')
+    .select('*')
+    .order('user_id', { ascending: true })
+    .order('level', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching all members for super admin:', error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+// Get user info for super admin view
+export async function getUserInfoForSuperAdmin(userIds: string[], supabase: SupabaseClient) {
+  const userInfo: Record<string, { username: string; email: string }> = {};
+  
+  // First, try to get profiles
+  const { data: profiles, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, username, email')
+    .in('id', userIds);
+
+  if (profileError) {
+    console.error('Error fetching profiles:', profileError);
+  } else if (profiles) {
+    profiles.forEach(profile => {
+      userInfo[profile.id] = {
+        username: profile.username || 'Unknown',
+        email: profile.email || '',
+      };
+    });
+  }
+
+  // Find users without profiles and get their emails from auth.users
+  const missingUserIds = userIds.filter(id => !userInfo[id]);
+  
+  if (missingUserIds.length > 0) {
+    try {
+      // Call the database function to get emails from auth.users
+      const { data: authEmails, error: authError } = await supabase
+        .rpc('get_user_emails', { user_ids: missingUserIds });
+
+      if (authError) {
+        console.error('Error fetching emails from auth.users:', authError);
+      } else if (authEmails) {
+        authEmails.forEach((item: { user_id: string; email: string | null }) => {
+          if (item.email) {
+            userInfo[item.user_id] = {
+              username: item.email.split('@')[0] || 'User',
+              email: item.email,
+            };
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error calling get_user_emails function:', err);
+    }
+  }
+
+  return userInfo;
+}
+
+// Transform all users' MLM data for super admin view
+export async function transformAllUsersMLMData(members: any[], supabase: SupabaseClient): Promise<Record<string, { userInfo: { username: string; email: string }; mlmData: MLMData }>> {
+  const usersData: Record<string, { userInfo: { username: string; email: string }; mlmData: MLMData }> = {};
+
+  // Group members by user_id
+  const membersByUser: Record<string, any[]> = {};
+  members.forEach(member => {
+    const userId = member.user_id;
+    if (!membersByUser[userId]) {
+      membersByUser[userId] = [];
+    }
+    membersByUser[userId].push(member);
+  });
+
+  // Get user info for all users
+  const userIds = Object.keys(membersByUser);
+  const userInfo = await getUserInfoForSuperAdmin(userIds, supabase);
+
+  // Transform each user's data
+  Object.keys(membersByUser).forEach(userId => {
+    const info = userInfo[userId];
+    
+    // Prioritize email address - use it as the display name
+    const email = info?.email || '';
+    const username = info?.username || email.split('@')[0] || '';
+    
+    // If we have email, use it; otherwise fallback to username or userId
+    usersData[userId] = {
+      userInfo: info || { 
+        username: email ? email.split('@')[0] : `User ${userId.substring(0, 8)}...`, 
+        email: email || '' 
+      },
+      mlmData: transformToMLMData(membersByUser[userId]),
+    };
+  });
+
+  return usersData;
+}
+

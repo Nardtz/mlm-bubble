@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -16,16 +17,147 @@ export default function ResetPasswordPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Wait a moment for session to be established from the reset link
-    const timer = setTimeout(() => {
-      setCheckingSession(false);
-      // If no user after timeout, they might need to click the link again
-      if (!user) {
-        setError("Invalid or expired reset link. Please request a new password reset.");
-      }
-    }, 2000);
+    // Refresh the session when the page loads (important for password reset flow)
+    const checkAndRefreshSession = async () => {
+      try {
+        // First, check for hash fragment (Supabase password reset includes session in hash)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const hashAccessToken = hashParams.get('access_token');
+        const hashRefreshToken = hashParams.get('refresh_token');
+        const hashType = hashParams.get('type');
+        
+        // If we have tokens in the hash, set the session immediately
+        // This is the primary way Supabase sends password reset links
+        if (hashAccessToken && hashRefreshToken) {
+          const { data: { session }, error: setSessionError } = await supabase.auth.setSession({
+            access_token: hashAccessToken,
+            refresh_token: hashRefreshToken,
+          });
+          
+          if (!setSessionError && session) {
+            // Clean up the hash from URL
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            setCheckingSession(false);
+            return;
+          } else if (setSessionError) {
+            console.error('Error setting session from hash:', setSessionError);
+            setError("Failed to establish session from reset link. Please request a new password reset.");
+            setCheckingSession(false);
+            return;
+          }
+        }
+        
+        // Check server-side session via API (more reliable for cookie-based sessions)
+        // Also check for code parameter (PKCE flow - less common for password reset)
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const sessionEstablished = urlParams.get('session_established') === 'true';
+        
+        if (code) {
+          // If there's a code, we need to exchange it (but this might fail without verifier)
+          // Redirect to callback route to handle it properly
+          const callbackUrl = `/auth/callback?code=${code}&type=recovery`;
+          window.location.href = callbackUrl;
+          return;
+        }
+        
+        if (sessionEstablished) {
+          // Wait a moment for cookies to sync, then check server-side
+          // Try multiple times as cookies might take time to be available
+          let sessionVerified = false;
+          for (let attempt = 0; attempt < 10; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            try {
+              const verifyResponse = await fetch('/api/verify-reset-session', {
+                credentials: 'include', // Important: include cookies
+              });
+              
+              if (verifyResponse.ok) {
+                const verifyResult = await verifyResponse.json();
+                
+                if (verifyResult.success && verifyResult.hasSession) {
+                  // Server confirms session exists, now sync to client
+                  // Force a session refresh on client side
+                  const { data: { session: clientSession } } = await supabase.auth.getSession();
+                  
+                  if (!clientSession) {
+                    // Try refreshing
+                    await supabase.auth.refreshSession();
+                    const { data: { session: refreshedSession } } = await supabase.auth.getSession();
+                    if (refreshedSession) {
+                      sessionVerified = true;
+                      break;
+                    }
+                  } else {
+                    sessionVerified = true;
+                    break;
+                  }
+                }
+              }
+            } catch (err) {
+              console.log('Session verification attempt failed, retrying...', attempt);
+            }
+          }
+          
+          if (sessionVerified) {
+            setCheckingSession(false);
+            return;
+          }
+        }
+        
+        // Fallback: Check client-side session
+        let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Error getting session:', sessionError);
+        }
 
-    return () => clearTimeout(timer);
+        // If no session, wait and retry (cookies might need time to sync)
+        if (!session) {
+          for (let i = 0; i < 15; i++) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            const { data: { session: retrySession } } = await supabase.auth.getSession();
+            
+            if (retrySession) {
+              session = retrySession;
+              break;
+            }
+            
+            // Also check server-side every few attempts
+            if (i % 3 === 0) {
+              const verifyResponse = await fetch('/api/verify-reset-session');
+              const verifyResult = await verifyResponse.json();
+              if (verifyResult.success && verifyResult.hasSession) {
+                // Server has session, force client refresh
+                await supabase.auth.refreshSession();
+                const { data: { session: refreshedSession } } = await supabase.auth.getSession();
+                if (refreshedSession) {
+                  session = refreshedSession;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        // Final check
+        if (!session) {
+          setError("Invalid or expired reset link. Please click the reset link from your email again.");
+          setCheckingSession(false);
+          return;
+        }
+
+        // Session is available, allow password reset
+        setCheckingSession(false);
+      } catch (err: any) {
+        console.error('Error checking session:', err);
+        setError("Failed to verify reset link. Please try again.");
+        setCheckingSession(false);
+      }
+    };
+
+    checkAndRefreshSession();
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,10 +183,24 @@ export default function ResetPasswordPage() {
       return;
     }
 
+    // First, ensure we have a valid session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      setError("Auth session missing! Please click the reset link from your email again.");
+      setLoading(false);
+      return;
+    }
+
     const { error: updateError } = await updatePassword(password);
 
     if (updateError) {
-      setError(updateError.message || "Failed to update password");
+      // Check if it's the "Auth session missing" error
+      if (updateError.message?.includes('session') || updateError.message?.includes('Auth session missing')) {
+        setError("Session expired. Please click the reset link from your email again to continue.");
+      } else {
+        setError(updateError.message || "Failed to update password");
+      }
       setLoading(false);
     } else {
       setSuccess(true);

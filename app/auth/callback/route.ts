@@ -27,18 +27,49 @@ export async function GET(request: Request) {
   if (code) {
     try {
       const supabase = await createClient();
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
       
       if (exchangeError) {
+        // Check if it's a PKCE error (code verifier missing)
+        // This can happen with password reset links if they're not configured correctly
+        if (exchangeError.message?.includes('code verifier') || 
+            exchangeError.message?.includes('both auth code and code verifier')) {
+          // For password reset, redirect to reset page - Supabase might send tokens in hash instead
+          if (type === 'recovery') {
+            const resetUrl = new URL('/reset-password', requestUrl.origin);
+            resetUrl.searchParams.set('error', 'Please use the link from your email directly. If the problem persists, request a new password reset.');
+            return NextResponse.redirect(resetUrl);
+          }
+        }
+        
         // If exchange fails, redirect to login with error
         const loginUrl = new URL('/login', requestUrl.origin);
         loginUrl.searchParams.set('error', exchangeError.message || 'Failed to verify email. Please try again.');
         return NextResponse.redirect(loginUrl);
       }
+
+      // Verify session was created
+      if (!data.session) {
+        const loginUrl = new URL('/login', requestUrl.origin);
+        loginUrl.searchParams.set('error', 'Failed to establish session. Please try again.');
+        return NextResponse.redirect(loginUrl);
+      }
       
       // If it's a password recovery, redirect to reset password page
+      // Create a redirect response that will include the cookies
       if (type === 'recovery') {
-        return NextResponse.redirect(new URL('/reset-password', requestUrl.origin));
+        const resetUrl = new URL('/reset-password', requestUrl.origin);
+        resetUrl.searchParams.set('session_established', 'true');
+        
+        // Create redirect response - cookies should be automatically included
+        // by the Supabase client's cookie handlers
+        const response = NextResponse.redirect(resetUrl);
+        
+        // The cookies are already set by exchangeCodeForSession through the cookie handlers
+        // But we need to ensure they're in the response
+        // The Supabase SSR client should handle this automatically
+        
+        return response;
       }
       
       // Success - redirect to home
