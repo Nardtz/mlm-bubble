@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
@@ -13,21 +13,40 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // 1. Initialize a fresh browser client to instantly read the SSR cookies set by route.ts
+  // 1. Initialize a fresh browser client to instantly read the SSR cookies
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-import { useEffect } from "react";
+  // 2. Catch the token if it comes through the URL hash (Implicit Flow)
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const access_token = hashParams.get("access_token");
+    const refresh_token = hashParams.get("refresh_token");
 
-// ... inside your component
-useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    console.log("Client Session on Load:", data.session);
-  });
-}, [supabase.auth]);
-  
+    if (access_token && refresh_token) {
+      supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      }).then(({ error }) => {
+        if (!error) {
+          // Clean the messy hash out of the browser's address bar
+          window.history.replaceState(null, "", window.location.pathname);
+        } else {
+          setError("Failed to verify the reset link. Please try requesting a new one.");
+        }
+      });
+    }
+  }, [supabase]);
+
+  // 3. Optional debug log to verify the session loads successfully
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      console.log("Client Session on Load:", data.session);
+    });
+  }, [supabase.auth]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -45,7 +64,7 @@ useEffect(() => {
       return;
     }
 
-    // 2. Directly update the user. Supabase will automatically use the active session cookie.
+    // Directly update the user. Supabase will use the session cookie/state.
     const { error: updateError } = await supabase.auth.updateUser({
       password: password,
     });
