@@ -19,6 +19,15 @@ export default function ResetPasswordPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+import { useEffect } from "react";
+
+// ... inside your component
+useEffect(() => {
+  supabase.auth.getSession().then(({ data }) => {
+    console.log("Client Session on Load:", data.session);
+  });
+}, [supabase.auth]);
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
